@@ -1,4 +1,4 @@
 # blog-api
 Django Homework 1.
 ## ERD
-![Blod ERD] (docs/erd.png)
+![Blog API ERD](docs/erd.png)
