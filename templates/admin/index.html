@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% load unfold %}
+
+{% block content %}
+   <div class="flex flex-col gap-6">
+       <div class="flex flex-col gap-6 lg:flex-row">
+           {% for card in cards %}
+              {% component "unfold/components/card.html" with title=card.title %}
+                 <strong class="text-3xl font-semibold">{{ card.value }}</strong>
+              {%endcomponent %}
+            {% endfor %}
+       </div>
+
+       {% component "unfold/components/card.html" with title="Posts per category" %}
+          {% component "unfold/components/chart/bar.html" with data=category_chart height=280 %}
+          {% endcomponent %}
+       {% endcomponent %}
+       
+       {% component "unfold/components/card.html" with title="Top 5 authors" %}
+          {% component "unfold/components/table.html" with table=authors_table card_included=1 %}
+          {% endcomponent %}
+        {% endcomponent %}
+
+        {% component "unfold/components/card.html" with title="Post statuses" %}
+           <div class="flex flex-col gap-6">
+               {% for item in progress %}
+                   {% component "unfold/components/progress.html" with title=item.title value=item.value description=item.description %}
+                   {% endcomponent %}
+                {% endfor %}
+           </div>
+        {% endcomponent %}
+   </div>
+{% endblock %}
