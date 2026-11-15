@@ -1,4 +1,5 @@
-from random import choice, randint, sample, shuffle
+from datetime import timedelta
+from random import choice, randint, random, sample, shuffle
 from time import perf_counter
 from typing import Any
 
@@ -11,6 +12,7 @@ from django.core.management.base import (
     CommandParser,
 )
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.auths.models import User
@@ -34,6 +36,11 @@ MAX_TAGS = 5
 MIN_SENTENCES = 1
 MAX_SENTENCES = 3
 FIRST_SUFFIX = 2
+DATE_PERIOD_DAYS = 365
+SECOND_PER_DAY = 24 * 60 * 60
+EDITED_SHARE = 0.3
+MIN_EDIT_DAYS = 1
+MAX_EDIT_DAYS = 30
 
 CATEGORY_NAMES = (
     "Python", "Django", "DevOps", "Databases",
@@ -151,7 +158,7 @@ class Command(BaseCommand):
         return slug
 
 
-    def _create_posts(self, count: int, users: list[User]) -> None:
+    def _create_posts(self, count: int, users: list[User]) -> list[Post]:
         categories = list(Category.objects.all())
         tags = list(Tag.objects.all())
         used_slugs = set(Post.objects.values_list("slug", flat=True))
@@ -183,15 +190,42 @@ class Command(BaseCommand):
 
         Post.objects.bulk_create(posts)
 
+        now = timezone.now()
+        for post in posts:
+            age_seconds = randint(0, DATE_PERIOD_DAYS * SECOND_PER_DAY)
+            post.created_at = now - timedelta(seconds=age_seconds)
+            post.updated_at = post.created_at
+
+            available_days = min(
+                MAX_EDIT_DAYS,
+                age_seconds // SECOND_PER_DAY,
+            )
+            if available_days >= MIN_EDIT_DAYS and random() < EDITED_SHARE:
+                post.updated_at += timedelta(
+                    days=randint(MIN_EDIT_DAYS, available_days)
+                )
+
+        Post.objects.bulk_update(posts, ("created_at", "updated_at"))
+
         for post in posts:
             tags_count = randint(MIN_TAGS, min(MAX_TAGS, len(tags)))
             post.tags.set(sample(tags, tags_count))
 
+        return posts
 
-    def _create_comments(self, count: int, users: list[User]) -> None:
-        published_posts = list(
-            Post.objects.filter(status=Post.Status.PUBLISHED)
+
+    def _create_comments(
+        self, count: int, users: list[User], posts: list[Post]
+    ) -> None:
+        published_posts = [
+            post for post in posts if post.status == Post.Status.PUBLISHED
+        ]
+
+        if count and not published_posts: 
+            published_posts = list(
+                Post.objects.filter(status=Post.Status.PUBLISHED)
         )
+
         if count and not published_posts:
             raise CommandError("Comments require published posts.")
 
@@ -207,6 +241,16 @@ class Command(BaseCommand):
             )
 
         Comment.objects.bulk_create(comments)
+
+        now = timezone.now()
+        for comment in comments:
+            post_created_at = comment.post.created_at
+            age_seconds = int((now - post_created_at).total_seconds())
+            comment.created_at = post_created_at + timedelta(
+                seconds=randint(0, age_seconds)
+            )
+
+        Comment.objects.bulk_update(comments, ("created_at",))
 
     def handle(self, *args: Any, **options: Any) -> None:
         started = perf_counter()
@@ -233,8 +277,8 @@ class Command(BaseCommand):
 
             categories_count = self._create_labels(Category, CATEGORY_NAMES)
             tags_count = self._create_labels(Tag, TAG_NAMES)
-            self._create_posts(post_count, users)
-            self._create_comments(comment_count, users)
+            posts = self._create_posts(options["posts"], users)
+            self._create_comments(options["comments"], users, posts)
 
         counts = {
             "Users": user_count,
